@@ -1,0 +1,765 @@
+
+```{r}
+library(tidyverse)
+library(DECIPHER)
+library(bioseq)
+library(Biostrings)
+library(ape)
+```
+
+```{r}
+read_fasta_df <- function (file = "") {
+  fasta <- readLines(file)
+  ind <- grep(">", fasta)
+  s <- data.frame(ind = ind, from = ind + 1, to = c((ind - 
+    1)[-1], length(fasta)))
+  seqs <- rep(NA, length(ind))
+  for (i in 1:length(ind)) {
+    seqs[i] <- paste(fasta[s$from[i]:s$to[i]], collapse = "")
+  }
+  tib <- tibble(label = gsub(">", "", fasta[ind]), sequence = seqs)
+  return(tib)
+}
+
+
+write_fasta <- function(sequences, names, filename) {
+  con <- file(filename, "w")
+  for (i in seq_along(sequences)) {
+    writeLines(paste0(">", names[i]), con)
+    if (!is.character(sequences[[i]])) {
+      sequences[[i]] <- as.character(sequences[[i]])
+    }
+    writeLines(sequences[[i]], con)
+  }
+  close(con)
+}
+
+
+write_fasta_df <- function (data, filename) 
+{
+    fastaLines = c()
+    for (rowNum in 1:nrow(data)) {
+        fastaLines = c(fastaLines, as.character(paste(">", 
+            data[rowNum, "label"], sep = "")))
+        fastaLines = c(fastaLines, as.character(data[rowNum, 
+            "sequence"]))
+    }
+    fileConn <- file(filename)
+    writeLines(fastaLines, fileConn)
+    close(fileConn)
+}
+
+dna_to_DNAbin <- function (dna){
+  DNAbin <- as_DNAbin(dna)
+  names(DNAbin) <- names(dna)
+  return(DNAbin)
+}
+dna_to_DNAStringset <- function(x) 
+{
+    bioseq:::check_dna(x)
+    DNAstr <- DNAStringSet(paste(x))
+    names(DNAstr) <- names(x)
+    return(DNAstr)
+}
+
+DNAStringSet_to_dna <- function(x){
+    x_dna <- as_dna(paste(x))
+    names(x_dna) <- names(x)
+    res <- tibble(label = names(x), sequence = x_dna)
+    return(res)
+}
+
+# Convert DNAstringset to DNAbin
+DNAStringSet_to_DNAbin <- function(DNAStringSet){
+  DNAbin <- as.DNAbin(DNAStringSet)
+  return(DNAbin)
+}
+
+# https://bmcbioinformatics.biomedcentral.com/articles/10.1186/s12859-018-2315-y
+palette <- c("A" = "#46ff2d", 
+             "G" = "#ffae01", 
+             "C" = "#f24641", 
+             "T" = "#4294fa", 
+             "K" = "#8b4816",
+             "M" = "#83831f",
+             "R" = "#ffff81",
+             "S" = "#ff9d80",
+             "Y" = "#e381f2",
+             "W" = "#80fff2",
+             "V" = "#fde4b8",
+             "B" = "#f9c1bf",
+             "H" = "#c0d9f9",
+             "D" = "#c7ffba",
+             "U" = "#8989fb",
+             "N" = "black", 
+             "-" = "white",
+             "+" = "deeppink")
+
+
+pal_df <- data.frame(names = names(palette), col = palette)
+
+
+```
+
+```{r}
+#psba txt files forward and reverse
+f_all <- sort(list.files(path = "/Users/bross/Desktop/AIMS/Analysis/sanger_analysis/sanger_raw", pattern = "F.txt", full.names = TRUE))
+
+r_all <- sort(list.files(path = "/Users/bross/Desktop/AIMS/Analysis/sanger_analysis/sanger_raw", pattern = "R.txt", full.names = TRUE))
+
+f_all
+r_all
+
+f_all_fasta <- f_all %>%
+  map(read_fasta_df) %>% # read in all the files
+  purrr::reduce(rbind) # reduce with rbind into one dataframe
+
+r_all_fasta <- r_all %>%
+  map(read_fasta_df) %>% # read in all the files
+  purrr::reduce(rbind) # reduce with rbind into one dataframe
+```
+
+```{r}
+
+# convert to format for DECIPHER and reverse complement the reverse sequence
+f_all_fasta_sub <- f_all_fasta %>%
+  mutate(sequence = case_when(str_detect(label, "49-1_Cob") ~ str_sub(sequence, start = 30, end = 890),
+                              str_detect(label, "55-1_Cob") ~ str_sub(sequence, start = 30, end = 890),
+                              str_detect(label, "49-2_Cob") ~ str_sub(sequence, start = 30, end = 890),
+                              str_detect(label, "49-3_Cob") ~ str_sub(sequence, start = 30, end = 890),
+                              str_detect(label, "49-1_Cox1") ~ str_sub(sequence, start = 30, end = 900),
+                              str_detect(label, "49-2_Cox1") ~ str_sub(sequence, start = 30, end = 900),
+                              str_detect(label, "49-3_Cox1") ~ str_sub(sequence, start = 30, end = 900),
+                              str_detect(label, "55-1_Cox1") ~ str_sub(sequence, start = 30, end = 900),
+                              str_detect(label, "55-4_Cox1") ~ str_sub(sequence, start = 30, end = 900),
+                              str_detect(label, "55-5_Cox1") ~ str_sub(sequence, start = 30, end = 900),
+                              str_detect(label, "49-1_cp23S") ~ str_sub(sequence, start = 30, end = 500),
+                              str_detect(label, "49-2_cp23S") ~ str_sub(sequence, start = 30, end = 500),
+                              str_detect(label, "49-3_cp23S") ~ str_sub(sequence, start = 30, end = 500),
+                              str_detect(label, "55-1_cp23S") ~ str_sub(sequence, start = 30, end = 500),
+                              str_detect(label, "49-1_LSU") ~ str_sub(sequence, start = 30, end = 500),
+                              str_detect(label, "49-2_LSU") ~ str_sub(sequence, start = 30, end = 500),
+                              str_detect(label, "49-3_LSU") ~ str_sub(sequence, start = 30, end = 500),
+                              str_detect(label, "55-1_LSU") ~ str_sub(sequence, start = 30, end = 500),
+                              str_detect(label, "55-4_LSU") ~ str_sub(sequence, start = 30, end = 500),
+                              str_detect(label, "55-5_LSU") ~ str_sub(sequence, start = 30, end = 500),
+                              TRUE ~ str_sub(sequence, start = 30, end = 600)))
+
+
+r_all_fasta_sub <- r_all_fasta %>%
+  mutate(sequence = case_when(str_detect(label, "49-1_Cob") ~ str_sub(sequence, start = 30, end = 890),
+                              str_detect(label, "55-1_Cob") ~ str_sub(sequence, start = 30, end = 890),
+                              str_detect(label, "49-2_Cob") ~ str_sub(sequence, start = 30, end = 890),
+                              str_detect(label, "49-3_Cob") ~ str_sub(sequence, start = 30, end = 890),
+                              str_detect(label, "49-1_Cox1") ~ str_sub(sequence, start = 30, end = 900),
+                              str_detect(label, "49-2_Cox1") ~ str_sub(sequence, start = 30, end = 900),
+                              str_detect(label, "49-3_Cox1") ~ str_sub(sequence, start = 30, end = 900),
+                              str_detect(label, "55-1_Cox1") ~ str_sub(sequence, start = 30, end = 900),
+                              str_detect(label, "55-4_Cox1") ~ str_sub(sequence, start = 30, end = 900),
+                              str_detect(label, "55-5_Cox1") ~ str_sub(sequence, start = 30, end = 900),
+                              str_detect(label, "49-1_cp23S") ~ str_sub(sequence, start = 30, end = 500),
+                              str_detect(label, "55-1_cp23S") ~ str_sub(sequence, start = 30, end = 500),
+                              str_detect(label, "49-2_cp23S") ~ str_sub(sequence, start = 30, end = 500),
+                              str_detect(label, "49-3_cp23S") ~ str_sub(sequence, start = 30, end = 500),
+                              str_detect(label, "49-1_LSU") ~ str_sub(sequence, start = 30, end = 500),
+                              str_detect(label, "49-2_LSU") ~ str_sub(sequence, start = 30, end = 500),
+                              str_detect(label, "49-3_LSU") ~ str_sub(sequence, start = 30, end = 500),
+                              str_detect(label, "55-1_LSU") ~ str_sub(sequence, start = 30, end = 500),
+                              str_detect(label, "55-4_LSU") ~ str_sub(sequence, start = 30, end = 500),
+                              str_detect(label, "55-5_LSU") ~ str_sub(sequence, start = 30, end = 500),
+           TRUE ~ str_sub(sequence, start = 30, end = 800)))
+
+
+
+f_dss <- f_all_fasta_sub %>%
+  deframe() %>%
+  as_dna() %>%
+  dna_to_DNAStringset()
+
+r_dss <- r_all_fasta_sub  %>%
+  deframe() %>%
+  as_dna() %>%
+  dna_to_DNAStringset()  %>%
+  reverseComplement()
+  
+
+pair_list <- list()
+for(i in 1:length(f_dss)){
+  ss <- DNAStringSet(c(f_dss[i], r_dss[i]))
+  pair_list[[i]] <- ss
+}
+
+
+# Align the sample pairs
+alignment_list <- list()
+for(i in 1:length(pair_list)){
+  alignment <- AlignSeqs(pair_list[[i]], verbose = FALSE)
+  alignment_list[[i]] <- alignment
+  
+   cat("Alignment", i, ":\n")
+  print(alignment)
+}
+
+# View the alignments
+aligned_df <- data.frame()
+for(i in 1:length(alignment_list)){
+  a_pair <- alignment_list[[i]] %>% writeXStringSet("temp_file.fasta")
+  a_df <- read_fasta_df("temp_file.fasta")
+  aligned_df <- rbind(aligned_df, a_df)
+}
+
+aligned_plotting <- aligned_df %>%
+  mutate(sample_id = case_when(
+    str_detect(label, "cp23S") ~ str_sub(label, 17, 26),
+    str_detect(label, "Cox1|psbA") ~ str_sub(label, 17, 25),
+    TRUE ~ str_sub(label, 17, 24)
+  )) %>%
+   mutate(label = case_when(
+    str_detect(label, "cp23S") ~ str_sub(label, 34, 34),
+    str_detect(label, "Cox1|psbA") ~ str_sub(label, 32, 32),
+    TRUE ~ str_sub(label, 30, 30)
+  )) 
+  
+# Create profile key
+key <- aligned_plotting %>%
+  tibble::rownames_to_column(var = "id")
+
+# Create long dataframe for ggplot
+long_sequences <- str_split(aligned_plotting$sequence, "") %>%
+  reshape2::melt() %>%
+  group_by(L1) %>%
+  mutate(x = row_number(),
+         L1 = as.character(L1)) %>%
+  left_join(., key, by = c("L1" = "id")) %>%
+  ungroup()
+
+# Plot alignment
+p1 <- ggplot(long_sequences, aes(y = label, x = x)) +
+      geom_tile(aes(fill = value), size = 1, name = "base") +
+      facet_wrap(~ sample_id, nrow = 3, scales = "free") +
+      geom_vline(xintercept = seq(50, max(long_sequences$x), by = 50), color = "black", linetype = "dashed", size = 0.05) +
+      scale_fill_manual(values = palette) +
+      theme(aspect.ratio = 0.3,
+            axis.title.y = element_blank(),
+        strip.text = element_text(margin = margin(0, 0, 10, 0)), # Add space below strip text
+        strip.background = element_blank(), # Remove strip background
+        strip.placement = "outside",
+        axis.text.x = element_text(size = 0.5),
+         axis.ticks.width = unit(0.1, "cm"))+
+      scale_x_continuous(expand = c(0, 0), breaks = seq(min(long_sequences$x), max(long_sequences$x), by = 100)) +
+    xlab("Position")
+p1
+
+ggsave("F-R_allignment.pdf", plot = p1, device="pdf", width = 10, height = 4)
+
+```
+
+
+##Exclude list
+
+```{r}
+
+align_list_final <- list()
+for(i in 1:length(alignment_list)){
+  if(str_detect(names(alignment_list[[i]][1]), "psbA")) align_list_final[[i]] <- NULL 
+  else align_list_final[[i]] <- alignment_list[[i]]
+}
+
+align_list_final <- Filter(Negate(is.null), align_list_final)
+
+
+```
+
+## Create the consensus sequences
+
+```{r}
+consensus_list <- list()
+for(i in 1:length(align_list_final)){
+  a_con <- align_list_final[[i]] %>% ConsensusSequence()
+  names(a_con) <- names(align_list_final[[i]])[1]
+  consensus_list[[i]] <- a_con
+}
+
+sequence_names <- c("SCF049-1-Cob", "SCF049-2-Cob", "SCF049-3-Cob","SCF055-1-Cob", "SCF049-1-Cox1", "SCF049-2-Cox1", "SCF049-3-Cox1","SCF055-1-Cox1", "SCF055-4-Cox1", "SCF055-5-Cox1", "SCF049-1-cp23s", "SCF049-2-cp23s", "SCF049-3-cp23s","SCF055-1-cp23s","SCF049-1-LSU", "SCF049-2-LSU", "SCF049-3-LSU","SCF055-1-LSU", "SCF055-4-LSU", "SCF055-5-LSU")
+write_fasta(consensus_list, sequence_names, "consensus_sequences.fasta")
+```
+
+# View the consensus sequences
+
+```{r}
+# View the consensus
+consensus_df <- data.frame()
+for(i in 1:length(consensus_list)){
+  a_pair <- consensus_list[[i]] %>% writeXStringSet("temp_file.fasta")
+  a_df <- read_fasta_df("temp_file.fasta")
+  consensus_df <- rbind(consensus_df, a_df)
+}
+
+aligned_plotting <- consensus_df %>%
+  mutate(sample_id = case_when(
+    str_detect(label, "cp23S") ~ str_sub(label, 17, 26),
+    str_detect(label, "Cox1|psbA") ~ str_sub(label, 17, 25),
+    TRUE ~ str_sub(label, 17, 24)
+  )) %>%
+   mutate(label = case_when(
+    str_detect(label, "cp23S") ~ str_sub(label, 34, 34),
+    str_detect(label, "Cox1|psbA") ~ str_sub(label, 32, 32),
+    TRUE ~ str_sub(label, 30, 30)
+  )) 
+  
+# Create profile key
+key <- aligned_plotting %>%
+  tibble::rownames_to_column(var = "id")
+
+# Create long dataframe for ggplot
+long_sequences <- str_split(aligned_plotting$sequence, "") %>%
+  reshape2::melt() %>%
+  group_by(L1) %>%
+  mutate(x = row_number(),
+         L1 = as.character(L1)) %>%
+  left_join(., key, by = c("L1" = "id")) %>%
+  ungroup()
+
+p2 <- ggplot(long_sequences, aes(y = label, x = x)) +
+      geom_tile(aes(fill = value), size = 1, name = "base") +
+      facet_wrap(~ sample_id, nrow = 3, scales = "free") +
+      geom_vline(xintercept = seq(50, max(long_sequences$x), by = 50), color = "black", linetype = "dashed", size = 0.05) +
+      scale_fill_manual(values = palette) +
+      theme(aspect.ratio = 0.3,
+            axis.title.y = element_blank(),
+        strip.text = element_text(margin = margin(0, 0, 10, 0)), # Add space below strip text
+        strip.background = element_blank(), # Remove strip background
+        strip.placement = "outside",
+        axis.text.x = element_text(size = 0.5),
+         axis.ticks.width = unit(0.1, "cm"))+
+      scale_x_continuous(expand = c(0, 0), breaks = seq(min(long_sequences$x), max(long_sequences$x), by = 100)) +
+    xlab("Position")
+p2
+
+ggsave("consensus_sequences.pdf", plot = p2, device="pdf", width = 10, height = 4)
+```
+
+
+#Treat psbA separately
+
+```{r}
+psba_F <- sort(list.files(path = "/Users/bross/Desktop/AIMS/Analysis/sanger_analysis/sanger_raw", pattern = "psbA_F.txt", full.names = TRUE))
+
+psba_R <- sort(list.files(path = "/Users/bross/Desktop/AIMS/Analysis/sanger_analysis/sanger_raw", pattern = "psbA_R.txt", full.names = TRUE))
+
+psba_F
+psba_R
+
+f_psba_fasta <- psba_F %>%
+  map(read_fasta_df) %>% # read in all the files
+  purrr::reduce(rbind) # reduce with rbind into one dataframe
+
+r_psba_fasta <- psba_R %>%
+  map(read_fasta_df) %>% # read in all the files
+  purrr::reduce(rbind) # reduce with rbind into one dataframe
+
+psbaF_fasta_sub <- f_psba_fasta %>%
+  mutate(sequence = case_when(str_detect(label, "49-1") ~ str_sub(sequence, start = 40, end = 560),
+                              str_detect(label, "49-2") ~ str_sub(sequence, start = 40, end = 610),
+                              str_detect(label, "49-3") ~ str_sub(sequence, start = 40, end = 530),
+                              TRUE ~ str_sub(sequence, start = 40, end = 600)))
+
+
+psbaR_fasta_sub <- r_psba_fasta %>%
+  mutate(sequence = case_when(str_detect(label, "49-1") ~ str_sub(sequence, start = 20, end = 1080),
+                              str_detect(label, "49-2") ~ str_sub(sequence, start = 20, end = 520),
+                              str_detect(label, "49-3") ~ str_sub(sequence, start = 20, end = 640),
+           TRUE ~ str_sub(sequence, start = 20, end = 1100)))
+
+f_psba_dss <- psbaF_fasta_sub %>%
+  deframe() %>%
+  as_dna() %>%
+  dna_to_DNAStringset()
+
+r_psba_dss <- psbaR_fasta_sub  %>%
+  deframe() %>%
+  as_dna() %>%
+  dna_to_DNAStringset() %>%
+  reverseComplement()
+
+align_psba_F <- AlignSeqs(f_psba_dss)
+align_psba_R <- AlignSeqs(r_psba_dss)
+
+aligned_list <- list(align_psba_F, align_psba_R)
+
+# View the alignments
+aligned_df <- data.frame()
+for(i in 1:length(aligned_list)){
+  a_pair <- aligned_list[[i]] %>% writeXStringSet("temp_file.fasta")
+  a_df <- read_fasta_df("temp_file.fasta")
+  aligned_df <- rbind(aligned_df, a_df)
+}
+
+aligned_plotting <- aligned_df %>%
+  mutate(sample_id = str_sub(label, 17, 25)) %>%
+   mutate(label = str_sub(label, 32, 32))
+    
+# Create profile key
+key <- aligned_plotting %>%
+  tibble::rownames_to_column(var = "id")
+
+key$id <- ifelse(key$id == 2, 3, ifelse(key$id == 3, 2, key$id))
+key$id <- ifelse(key$id == 5, 6, ifelse(key$id == 6, 5, key$id))
+
+# Create long dataframe for ggplot
+long_sequences <- str_split(aligned_plotting$sequence, "") %>%
+  reshape2::melt() %>%
+  group_by(L1) %>%
+  mutate(x = row_number(),
+         L1 = as.character(L1)) %>%
+  left_join(., key, by = c("L1" = "id")) %>%
+  ungroup()
+
+# Plot alignment
+p3 <- ggplot(long_sequences, aes(y = sample_id, x = x)) +
+      geom_tile(aes(fill = value), size = 1, name = "base") +
+      facet_wrap(~ label, nrow = 3, scales = "free") +
+      geom_vline(xintercept = seq(50, max(long_sequences$x), by = 50), color = "black", linetype = "dashed", size = 0.05) +
+      scale_fill_manual(values = palette) +
+      theme(aspect.ratio = 0.3,
+            axis.title.y = element_blank(),
+        strip.text = element_text(margin = margin(0, 0, 10, 0)), # Add space below strip text
+        strip.background = element_blank(), # Remove strip background
+        strip.placement = "outside",
+        axis.text.x = element_text(size = 0.5),
+         axis.ticks.width = unit(0.1, "cm"))+
+      scale_x_continuous(expand = c(0, 0), breaks = seq(min(long_sequences$x), max(long_sequences$x), by = 100)) +
+    xlab("Position")
+p3
+
+ggsave("psbA_allignment_049_055.pdf", plot = p3, device="pdf", width = 10, height = 4)
+
+```
+
+
+#psbA consensus 
+```{r}
+align_list_final <- align_psba_R[-4] #removal SCF055 sequence
+consensus <- ConsensusSequence(align_list_final)
+names(consensus) <- "SCF049-1-psbA"
+trimmed_consensus <- subseq(consensus, start = 1050, end = 1300) #trim to the matching region only
+writeXStringSet(trimmed_consensus, "consensus_psbA_049.fasta")
+
+align_list_final2 <- align_psba_R[4] #keeping only SCF055 sequence
+names(align_list_final2) <- "SCF055-1-psbA"
+trimmed_consensus2 <- subseq(align_list_final2, start = 1050, end = 1300) #trim to the matching region only
+writeXStringSet(trimmed_consensus2, "consensus_psbA_055.fasta")
+
+
+```
+
+
+#Create a unique fasta file with all the consensus sequence for all the markers
+```{r}
+consensus_sequences <- readDNAStringSet("consensus_sequences.fasta")
+consensus_psbA_049 <- readDNAStringSet("consensus_psbA_049.fasta")
+consensus_psbA_055 <- readDNAStringSet("consensus_psbA_055.fasta")
+
+# Combine the DNAStringSets
+combined_sequences <- c(consensus_sequences, consensus_psbA_049, consensus_psbA_055)
+writeXStringSet(combined_sequences, filepath = "final_sequences.fasta")
+
+```
+
+
+
+
+###############################################################
+#Primer design for NGS psbA variable region
+
+
+#psbA consensus for primer design 
+```{r}
+consensus_primer_R <- ConsensusSequence(align_psba_R)
+consensus_primer_F <- ConsensusSequence(align_psba_F)
+
+names(consensus_primer_R) <- "psbA_R_Cons"
+names(consensus_primer_F) <- "psbA_F_Cons"
+
+cons_align <- c(consensus_primer_R, consensus_primer_F)
+F_R_align <- AlignSeqs(cons_align)
+
+writeXStringSet(consensus_primer_R, "variable_psbA_R.fasta")
+writeXStringSet(consensus_primer_F, "variable_psbA_F.fasta")
+writeXStringSet(F_R_align, "variable_psbA_F_R_align.fasta")
+
+
+psbA_primer_df_R <- read_fasta_df("variable_psbA_R.fasta")
+psbA_primer_df_F <- read_fasta_df("variable_psbA_F.fasta")
+psbA_primer_df<- rbind(psbA_primer_df_R, psbA_primer_df_F)
+
+psbA_primer_aligned_df <- read_fasta_df("variable_psbA_F_R_align.fasta")
+
+#plotting for both aligned and not aligned Fwd and Rev consensus sequences. The consensus sequences have been generated by aligning Fwd with Fwd and Rev with Rev of 055 and 3 repeats of 049. No alignment between Fwd and Rev has been done. Here plotting for not aligned consensus Fwd and Rev (p4) and a further alignment between Fwd consensus and Rev consensus is shown in p5. Fwd and Rev sequences do not align, the PCR psbA amplicon should be max 1200 bp, here with the aligned sequences goes beyond this limit, which suggests issues in the alignment between Fwd and Rev. 
+
+key <- psbA_primer_df %>%
+  tibble::rownames_to_column(var = "id")
+
+key_aligned <- psbA_primer_aligned_df %>%
+  tibble::rownames_to_column(var = "id")
+
+
+long_sequences <- str_split(psbA_primer_df$sequence, "") %>%
+  reshape2::melt() %>%
+  group_by(L1) %>%
+  mutate(x = row_number(),
+         L1 = as.character(L1)) %>%
+  left_join(., key, by = c("L1" = "id")) %>%
+  ungroup()
+
+long_sequences_aligned <- str_split(psbA_primer_aligned_df$sequence, "") %>%
+  reshape2::melt() %>%
+  group_by(L1) %>%
+  mutate(x = row_number(),
+         L1 = as.character(L1)) %>%
+  left_join(., key_aligned, by = c("L1" = "id")) %>%
+  ungroup()
+
+
+
+
+p4 <- ggplot(long_sequences, aes(y = label, x = x)) +
+      geom_tile(aes(fill = value), size = 1, name = "base") +
+      geom_vline(xintercept = seq(0,max(long_sequences$x), by = 20), color = "black", linetype = "dashed", size = 0.05) +
+      scale_fill_manual(values = palette) +
+      theme(aspect.ratio = 0.3,
+            axis.title.y = element_blank(),
+        strip.text = element_text(margin = margin(0, 0, 10, 0)), # Add space below strip text
+        strip.background = element_blank(), # Remove strip background
+        strip.placement = "outside",
+        axis.text.x = element_text(size = 0.5),
+         axis.ticks.width = unit(0.1, "cm"))+
+      scale_x_continuous(expand = c(0, 0), breaks = seq(min(long_sequences$x), max(long_sequences$x), by = 10)) +
+    xlab("Position")
+p4
+
+ggsave("consensuspsbA_F_R_primer.pdf", plot = p4, device="pdf", width = 10, height = 4)
+
+p6 <- ggplot(long_sequences_aligned, aes(y = label, x = x)) +
+      geom_tile(aes(fill = value), size = 1, name = "base") +
+      geom_vline(xintercept = seq(0 ,max(long_sequences$x), by = 20), color = "black", linetype = "dashed", size = 0.05) +
+      scale_fill_manual(values = palette) +
+      theme(aspect.ratio = 0.3,
+            axis.title.y = element_blank(),
+        strip.text = element_text(margin = margin(0, 0, 10, 0)), # Add space below strip text
+        strip.background = element_blank(), # Remove strip background
+        strip.placement = "outside",
+        axis.text.x = element_text(size = 0.5),
+         axis.ticks.width = unit(0.1, "cm"))+
+      scale_x_continuous(expand = c(0, 0), breaks = seq(min(long_sequences$x), max(long_sequences$x), by = 10)) +
+    xlab("Position")
+p6
+
+ggsave("align_final_psbA.pdf", plot = p6, device="pdf", width = 10, height = 4)
+
+```
+#PCR template generation 
+```{r}
+trimmed_F <- subseq(consensus_primer_F, start = 1, end = 445)
+trimmed_R <- subseq(consensus_primer_R, start = 928, end = 1231)
+
+writeXStringSet(trimmed_F, filepath = "psbA_variable_PCR_template_1.fasta")
+writeXStringSet(trimmed_R, filepath = "psbA_variable_PCR_template_2.fasta")
+
+```
+
+#Check Template 
+```{r}
+to_align_1 <- c(trimmed_F, consensus_primer_F)
+ctrl_1 <- AlignSeqs(to_align_1) 
+
+to_align_2 <- c(trimmed_R, consensus_primer_R)
+ctrl_2 <- AlignSeqs(to_align_2) 
+
+
+writeXStringSet(ctrl_1, filepath="PCR_template_align_1.fasta")
+writeXStringSet(ctrl_2, filepath="PCR_template_align_2.fasta")
+
+ctrl_df <- read_fasta_df("PCR_template_align_1.fasta")
+ctrl_df2 <- read_fasta_df("PCR_template_align_2.fasta")
+ctrl_df<- rbind(ctrl_df, ctrl_df2)
+
+key <- ctrl_df %>%
+  tibble::rownames_to_column(var = "id")
+
+long_sequences <- str_split(ctrl_df$sequence, "") %>%
+  reshape2::melt() %>%
+  group_by(L1) %>%
+  mutate(x = row_number(),
+         L1 = as.character(L1)) %>%
+  #left_join(., key, by = c("L1" = "id")) %>%
+  ungroup()
+
+
+
+p5 <- ggplot(long_sequences, aes(y = L1, x = x)) +
+      geom_tile(aes(fill = value), size = 1, name = "base") +
+      geom_vline(xintercept = seq(0,max(long_sequences$x), by = 50), color = "black", linetype = "dashed", size = 0.05) +
+      scale_fill_manual(values = palette) +
+      theme(aspect.ratio = 0.3,
+            axis.title.y = element_blank(),
+        strip.text = element_text(margin = margin(0, 0, 10, 0)), # Add space below strip text
+        strip.background = element_blank(), # Remove strip background
+        strip.placement = "outside",
+        axis.text.x = element_text(size = 0.5),
+         axis.ticks.width = unit(0.1, "cm"))+
+      scale_x_continuous(expand = c(0, 0), breaks = seq(min(long_sequences$x), max(long_sequences$x), by = 10)) +
+    xlab("Position")
+p5
+
+ggsave("PCR_template_CTRL.pdf", plot = p5, device="pdf", width = 10, height = 4)
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+#Treat psbA ab1 files - not used since I have txt but for further need. This code read txt and ab1 files, pull the sequences, merge them together, align and plot.
+
+```{r}
+ab1_for <- list.files(path = "/Users/bross/Desktop/AIMS/Analysis/sanger_analysis/psba_055", pattern = "\\F.ab1$", full.names = TRUE)
+
+ab1_rev <- list.files(path = "/Users/bross/Desktop/AIMS/Analysis/sanger_analysis/psba_055", pattern = "\\R.ab1$", full.names = TRUE)
+
+read_ab1_df <- function(file) {
+    ab1_data <- read.abif(file)
+    if (inherits(ab1_data, "abif")) {
+        seq <- as.character(sangerseqR::primarySeq(sangerseqR::sangerseq(ab1_data)))
+        return(data.frame(label = basename(file), sequence = seq, stringsAsFactors = FALSE))
+    } else {
+        stop("The file does not seem to be a valid AB1 file.")
+    }
+}
+
+f_ab1_fasta <- ab1_for %>%
+  map(read_ab1_df) %>%
+  reduce(rbind)
+
+r_ab1_fasta <- ab1_rev %>%
+  map(read_ab1_df) %>%
+  reduce(rbind)
+
+combined_fasta <- bind_rows(f_ab1_fasta, r_ab1_fasta)
+
+
+psbaF_fasta_sub <- combined_fasta_f %>%
+  mutate(sequence = case_when(str_detect(label, "49-1") ~ str_sub(sequence, start = 40, end = 560),
+                              str_detect(label, "49-2") ~ str_sub(sequence, start = 40, end = 610),
+                              str_detect(label, "49-3") ~ str_sub(sequence, start = 40, end = 530),
+                              TRUE ~ str_sub(sequence, start = 30, end = 600)))
+
+
+psbaR_fasta_sub <- combined_fasta_r%>%
+  mutate(sequence = case_when(str_detect(label, "49-1") ~ str_sub(sequence, start = 20, end = 1080),
+                              str_detect(label, "49-2") ~ str_sub(sequence, start = 20, end = 520),
+                              str_detect(label, "49-3") ~ str_sub(sequence, start = 20, end = 640),
+           TRUE ~ str_sub(sequence, start = 30, end = 800)))
+
+f_psba_ab1 <- combined_fasta %>%
+  deframe() %>%
+  as_dna() %>%
+  dna_to_DNAStringset() %>%
+  reverseComplement() %>%
+  AlignSeqs()
+
+aligned_df_55 <- data.frame(
+  label = names(f_psba_ab1),
+  sequence = as.character(f_psba_ab1),
+  stringsAsFactors = FALSE
+)
+
+aligned_plotting_2 <- aligned_df_55 %>%
+  mutate(sample_id = str_sub(label, 17, 25)) %>%
+   mutate(label = str_sub(label, 32, 32)) %>%
+  rownames_to_column(var = "row_number")
+
+    
+# Create profile key
+key <- aligned_plotting_2 %>%
+  tibble::rownames_to_column(var = "id")
+
+# Create long dataframe for ggplot
+long_sequences <- str_split(aligned_plotting_2$sequence, "") %>%
+  reshape2::melt() %>%
+  group_by(L1) %>%
+  mutate(x = row_number(),
+         L1 = as.character(L1)) %>%
+  left_join(., key, by = c("L1" = "id")) %>%
+  ungroup()
+
+# Plot alignment
+p3 <- ggplot(long_sequences, aes(y = label, x = x)) +
+  geom_tile(aes(fill = value), size = 1) +
+  geom_vline(xintercept = seq(50, max(long_sequences$x), by = 50), color = "black", linetype = "dashed", size = 0.05) +
+  scale_fill_manual(values = palette, name = "base") +
+  theme(
+    aspect.ratio = 0.3,
+    axis.title.y = element_blank(),
+    strip.text = element_text(margin = margin(0, 0, 10, 0)), # Add space below strip text
+    strip.background = element_blank(), # Remove strip background
+    strip.placement = "outside",
+    axis.text.x = element_text(size = 0.5),
+    axis.ticks.length = unit(0.1, "cm")
+  ) +
+  scale_x_continuous(expand = c(0, 0), breaks = seq(min(long_sequences$x), max(long_sequences$x), by = 100)) +
+  xlab("Position")
+
+p3
+
+
+ggsave("psbA_allignment_055.pdf", plot = p3, device="pdf", width = 10, height = 4)
+
+
+aligned_plotting_2 <- aligned_plotting_2 %>% select(-row_number)
+joined <- rbind(aligned_plotting, aligned_plotting_2)
+
+
+key <- joined %>%
+  tibble::rownames_to_column(var = "id")
+
+key$id <- ifelse(key$id == 2, 3, ifelse(key$id == 3, 2, key$id))
+key$id <- ifelse(key$id == 5, 6, ifelse(key$id == 6, 5, key$id))
+
+# Create long dataframe for ggplot
+long_sequences <- str_split(joined$sequence, "") %>%
+  reshape2::melt() %>%
+  group_by(L1) %>%
+  mutate(x = row_number(),
+         L1 = as.character(L1)) %>%
+  left_join(., key, by = c("L1" = "id")) %>%
+  ungroup()
+
+# Plot alignment
+p3 <- ggplot(long_sequences, aes(y = sample_id, x = x)) +
+      geom_tile(aes(fill = value), size = 1, name = "base") +
+      facet_wrap(~ label, nrow = 3, scales = "free") +
+      geom_vline(xintercept = seq(50, max(long_sequences$x), by = 50), color = "black", linetype = "dashed", size = 0.05) +
+      scale_fill_manual(values = palette) +
+      theme(aspect.ratio = 0.3,
+            axis.title.y = element_blank(),
+        strip.text = element_text(margin = margin(0, 0, 10, 0)), # Add space below strip text
+        strip.background = element_blank(), # Remove strip background
+        strip.placement = "outside",
+        axis.text.x = element_text(size = 0.5),
+         axis.ticks.width = unit(0.1, "cm"))+
+      scale_x_continuous(expand = c(0, 0), breaks = seq(min(long_sequences$x), max(long_sequences$x), by = 100)) +
+    xlab("Position")
+p3
+
+```
+
+
