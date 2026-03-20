@@ -1,0 +1,21 @@
+ITS2 type profile UID		369225	369298
+Clade		C	C
+Majority ITS2 sequence		C1	C1
+Associated species		None	None
+ITS2 profile abundance local		2	1
+ITS2 profile abundance DB		67	69
+ITS2 type profile		C1/C3-C1c-C1b-C42.2-C1bh-C1br	C1-C1c-C1b-C72k-C42.2-C1br-C1cb
+163880	C1-49-1_18S	34094.0	0
+163881	C1-49-2_18S	44591.0	0
+163882	C1-49-3_18S	0	34305.0
+163891	NTC5_18S	0	0
+163890	NTC4_18S	0	0
+163889	NTC3_18S	0	0
+163888	NTC2_18S	0	0
+163887	NTC1_18S	0	0
+163886	EB4_SJ_18S	0	0
+163885	EB3_SJ_18S	0	0
+163884	EB2_SJ_18S	0	0
+163883	EB1_SJ_18S	0	0
+Sequence accession / SymPortal UID		2-308-4-1-32-831-848	2-308-4-835-1-848-832
+Average defining sequence proportions and [stdev]		0.820[0.007]-0.090[0.004]-0.045[0.003]-0.016[0.000]-0.015[0.000]-0.009[0.001]-0.006[0.000]	0.817[nan]-0.089[nan]-0.043[nan]-0.025[nan]-0.015[nan]-0.006[nan]-0.005[nan]
